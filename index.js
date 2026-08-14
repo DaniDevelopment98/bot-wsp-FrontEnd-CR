@@ -43,17 +43,19 @@ async function startBot() {
         const jid = msg.key.remoteJid
         const lower = text.toLowerCase()
 
-        let groupMeta = null
-        try { if (jid.endsWith('@g.us')) groupMeta = await sock.groupMetadata(jid) } catch(e){}
+               let groupMeta = null
+        try { 
+            if (jid.endsWith('@g.us')) groupMeta = await sock.groupMetadata(jid) 
+        } catch(e){}
+
         const buscarJid = (nombre) => {
             if (!groupMeta) return null
             const m = groupMeta.participants.find(p => {
                 const n = (p.notify || p.name || "").toLowerCase()
                 return n.includes(nombre.toLowerCase().substring(0,4)) || nombre.toLowerCase().includes(n.substring(0,4))
             })
-            return m? m.id : null
+            return m ? m.id : null
         }
-
         if (lower === "!menu") {
             let txt = `╭─━━━━━━━━━━━━━━━━━━━━╮\n│ 💎 *PANCAKES VIP+ V2 PRO* 💎 │\n├─━━━━━━━━━━━━━━━━━━━━┤\n│ ⚔️ *!guerra* → Reporte ejecutivo\n│ 🚨 *!faltan* → Solo faltan + tag\n│ 🏆 *!top* → Top 10 PG\n│ 🏰 *!clan* → Info clan\n│ 👤 *!perfil #TAG* → Perfil PRO\n│ 📦 *!cofres #TAG* → Ciclo\n│ 💎 *!ping* → Test\n╰─━━━━━━━━━━━━━━━━━━━━╯`
             return sock.sendMessage(jid, { text: txt })
