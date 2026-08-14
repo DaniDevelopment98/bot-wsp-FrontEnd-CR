@@ -2,7 +2,7 @@ const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysocket
 const axios = require('axios')
 const P = require('pino')
 
-const API_URL = process.env.API_URL || "https://tu-api.onrender.com" // CAMBIA ESTO POR TU LINK DE RENDER
+const API_URL = process.env.API_URL || "https://bot-clash-royale-backend.onrender.com" // CAMBIA ESTO POR TU LINK DE RENDER
 const firma = `\n\n🤖 _Asistente Bot de Daniiel_`
 
 async function startBot() {
