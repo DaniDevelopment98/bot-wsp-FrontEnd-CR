@@ -1,10 +1,25 @@
+import express from 'express'
 import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion } from '@whiskeysockets/baileys'
 import axios from 'axios'
 import P from 'pino'
 
 const API_URL = (process.env.API_URL || "https://bot-clash-royale-backend.onrender.com").replace(/\/$/, "")
 const CLAN_TAG = (process.env.CLAN_TAG || "GJCP9C8Y").replace('#','').toUpperCase()
-const firma = `\n\n🤖 _Asistente Bot de Daniiel_`
+const firma = '\n\n _Asistente Bot de Daniiel_'
+
+// --- SERVIDOR WEB PARA QUE NO SE DUERMA EN RENDER/RAILWAY ---
+const app = express()
+const PORT = process.env.PORT || 3000
+
+app.get('/', (req,res) => {
+  res.status(200).send(`✅ BOT PANCAKES VIP+ ONLINE - ${new Date().toLocaleString()}`)
+})
+app.get('/ping', (req,res) => {
+  res.status(200).send('pong')
+})
+
+app.listen(PORT, () => console.log(`🌐 Servidor web activo en puerto ${PORT}`))
+// --- FIN SERVIDOR WEB ---
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth')
