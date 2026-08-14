@@ -3,13 +3,15 @@ import qrcode from "qrcode-terminal"
 import dotenv from "dotenv"
 import axios from "axios"
 
-console.log("Iniciando...")
-fetch("https://api.ipify.org?format=json").then(r=>r.json()).then(d=>console.log("MI IP DE RENDER ES:", d.ip))
-
 dotenv.config()
+console.log("Iniciando bot CoC...")
 
 const CLASH_API_KEY = process.env.CLASH_API_KEY
 const CLASH_TAG = process.env.CLASH_TAG
+
+if (!CLASH_API_KEY || !CLASH_TAG) {
+    console.log("❌ FALTA CLASH_API_KEY o CLASH_TAG en el .env")
+}
 
 async function getClanInfo() {
     try {
@@ -19,13 +21,13 @@ async function getClanInfo() {
         })
         const clan = res.data
         return `🏰 *${clan.name}* ${clan.tag}\n` +
-               `Nivel: ${clan.clanLevel} | Puntos: ${clan.clanPoints}\n` +
+               `Nivel: ${clan.clanLevel} | Puntos: ${clan.clanPoints} | VS: ${clan.clanVersusPoints}\n` +
                `Miembros: ${clan.members}/50\n` +
                `Descripción: ${clan.description}\n\n` +
-               `Miembros:\n` + clan.memberList.map(m => `- ${m.name} | TH${m.townHallLevel}`).join("\n")
+               `Miembros:\n` + clan.memberList.map(m => `- ${m.name} | TH${m.townHallLevel} | ${m.role}`).join("\n")
     } catch (e) {
         console.log(e.response?.data || e.message)
-        return "Error al consultar la API de CoC. Revisa TAG y API_KEY"
+        return "❌ Error al consultar la API de CoC. Revisa que tu IP esté autorizada en developer.clashofclans.com y el TAG."
     }
 }
 
@@ -42,9 +44,7 @@ async function startBot() {
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update
         if (qr) {
-            console.log("\nESCANEA ESTE QR - Abre este link en tu cel:\n")
-            console.log(`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`)
-            console.log("\nO escanea abajo:\n")
+            console.log("\nESCANEA ESTE QR:\n")
             qrcode.generate(qr, { small: true })
         }
         if (connection === "open") {
@@ -53,12 +53,11 @@ async function startBot() {
         if (connection === "close") {
             const statusCode = lastDisconnect?.error?.output?.statusCode
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut
-            console.log("Desconectado, motivo:", lastDisconnect?.error)
+            console.log("Desconectado:", lastDisconnect?.error?.message)
             if (shouldReconnect) {
-                console.log("Reconectando en 5 seg...")
                 setTimeout(startBot, 5000)
             } else {
-                console.log("Sesión cerrada, borra la carpeta auth para nuevo QR")
+                console.log("Sesión cerrada, borra la carpeta /auth")
             }
         }
     })
@@ -67,16 +66,40 @@ async function startBot() {
         for (const msg of messages) {
             if (!msg.message) continue
             if (msg.key.fromMe) continue
-            const text = msg.message.conversation || msg.message.extendedTextMessage?.text || ""
+            const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim()
             const jid = msg.key.remoteJid
+            const lower = text.toLowerCase()
 
-            if (text.toLowerCase().startsWith("!clan")) {
+            if (lower === "!menu" || lower === "!help" || lower === "!ayuda") {
+                await sock.sendMessage(jid, { text: 
+`📋 *MENU BOT COC*
+
+!ping - Ver si el bot está activo
+!clan - Info del clan
+!top - Top 5 del clan por trofeos
+
+Hecho con Baileys + CoC API 🏰` })
+            }
+            if (lower === "!ping") {
+                await sock.sendMessage(jid, { text: "Pong! ✅ Bot activo" })
+            }
+            if (lower.startsWith("!clan")) {
                 await sock.sendMessage(jid, { text: "Consultando clan..." })
                 const info = await getClanInfo()
                 await sock.sendMessage(jid, { text: info })
             }
-            if (text.toLowerCase() === "!ping") {
-                await sock.sendMessage(jid, { text: "Pong! ✅ Bot activo" })
+            if (lower === "!top") {
+                try {
+                    const tag = encodeURIComponent(CLASH_TAG)
+                    const res = await axios.get(`https://api.clashofclans.com/v1/clans/${tag}`, {
+                        headers: { Authorization: `Bearer ${CLASH_API_KEY}` }
+                    })
+                    const top = res.data.memberList.sort((a,b) => b.trophies - a.trophies).slice(0,5)
+                    const txt = "🏆 *TOP 5*\n" + top.map((m,i) => `${i+1}. ${m.name} - ${m.trophies} copas`).join("\n")
+                    await sock.sendMessage(jid, { text: txt })
+                } catch(e) {
+                    await sock.sendMessage(jid, { text: "Error al obtener top" })
+                }
             }
         }
     })
