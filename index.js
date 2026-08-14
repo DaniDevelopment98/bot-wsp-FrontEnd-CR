@@ -1,19 +1,16 @@
-const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys')
-const axios = require('axios')
-const P = require('pino')
+import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion } from '@whiskeysockets/baileys'
+import axios from 'axios'
+import P from 'pino'
 
-const API_URL = process.env.API_URL || "https://bot-clash-royale-backend.onrender.com" // CAMBIA ESTO POR TU LINK DE RENDER
+const API_URL = process.env.API_URL || "https://tu-api.onrender.com"
 const firma = `\n\n🤖 _Asistente Bot de Daniiel_`
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth')
-    const sock = makeWASocket({ auth: state, logger: P({ level: 'silent' }) })
+    const { version } = await fetchLatestBaileysVersion()
+    const sock = makeWASocket({ version, auth: state, logger: P({ level: 'silent' }) })
     sock.ev.on('creds.update', saveCreds)
-
-    sock.ev.on('connection.update', (update) => {
-        const { qr } = update
-        if(qr) console.log(qr)
-    })
+    sock.ev.on('connection.update', (u) => { if(u.qr) console.log(u.qr) })
 
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const msg = messages[0]
@@ -23,111 +20,121 @@ async function startBot() {
         if (!text) return
         const lower = text.toLowerCase().trim()
 
-        //!MENU
-        if (lower === '!menu' || lower === '!ayuda' || lower === '!comandos') {
+        if (lower === '!menu' || lower === '!ayuda') {
             let txt = `╭─━━━━━━━━━━━━━━╮\n`
             txt += `│ 💎 *ASISTENTE DE DANIIEL* 💎\n`
             txt += `│ 🤖 Bot oficial de Daniiel\n`
             txt += `├─━━━━━━━━━━━━━━┤\n`
-            txt += `│ ⚔️!guerra → Reporte completo\n`
-            txt += `│ 🚨!faltan → Quién falta por atacar\n`
+            txt += `│ ⚔️!guerra → Reporte guerra (PG)\n`
+            txt += `│ 🚨!faltan → Faltan por atacar\n`
             txt += `│ 👤!perfil #TAG → Perfil PRO\n`
-            txt += `│ 📋!menu → Ver este menú\n`
+            txt += `│ 💤!inactivos → Inactivos + offline\n`
             txt += `╰─━━━━━━━━━━━━━━╯`
             txt += firma + ` | PANCAKES VIP+`
             return sock.sendMessage(jid, { text: txt })
         }
 
-        //!PERFIL
         if (lower.startsWith("!perfil")) {
             let tag = text.split(" ").find(t => t.includes('#')) || text.split(" ")[1] || ""
             tag = tag.replace(/[^A-Za-z0-9#]/g, '').replace('#','').toUpperCase().trim()
-            if (!tag || tag.length < 3) return sock.sendMessage(jid, { text: "❌ Usa:!perfil #TAG\nEj:!perfil #2PP" + firma })
+            if (!tag || tag.length < 3) return sock.sendMessage(jid, { text: "❌ Usa:!perfil #TAG" + firma })
             try {
-                console.log(`[PERFIL] ${tag} pedido en ${jid}`)
                 const { data } = await axios.get(`${API_URL}/perfil/${tag}`, { timeout: 15000 })
-                const favCard = data.currentFavouriteCard?.name || 'N/A'
-                const currentDeck = data.currentDeck?.map(c=> c.name).join(', ') || 'Privado'
-                const clanName = data.clan? `${data.clan.name} [${data.role || 'Miembro'}]` : 'Sin clan'
-                const arena = data.arena?.name || 'Desconocida'
-                const winRate = data.battleCount? Math.round((data.wins / data.battleCount)*100) : 0
-
-                let txt = `╭─ 💎 *PERFIL PRO* ─╮\n`
-                txt += `│ 👤 *${data.name}* | #${tag}\n`
-                txt += `│ 🏰 ${clanName}\n`
-                txt += `│ 🏆 ${data.trophies} | Récord: ${data.bestTrophies}\n`
-                txt += `│ 🗺️ ${arena} | ⭐ Nv ${data.expLevel}\n`
-                txt += `│ ⚔️ ${data.battleCount||0} batallas | ${winRate}% win\n`
-                txt += `│ 👑 3 Coronas: ${data.threeCrownWins||0} | WarWins: ${data.warDayWins||0}\n`
-                txt += `│ ❤️ Fav: ${favCard}\n`
-                txt += `│ 🎴 Mazo: ${currentDeck.substring(0,90)}\n`
-                txt += `╰─ 💎 *VIP+* ─╯`
-                txt += firma
+                let txt = `╭─ 💎 *PERFIL PRO* ─╮\n│ 👤 *${data.name}* | #${tag}\n│ 🏆 ${data.trophies} | Récord: ${data.bestTrophies}\n│ 🏰 ${data.clan?.name || 'Sin clan'}\n╰─ 💎 *VIP+* ─╯` + firma
                 return sock.sendMessage(jid, { text: txt })
             } catch(e){
-                console.log("Error perfil:", e.message)
                 return sock.sendMessage(jid, { text: `❌ Tag #${tag} no encontrado` + firma })
             }
         }
 
-        //!GUERRA y!FALTAN
         if (lower.startsWith("!guerra") || lower.startsWith("!faltan")) {
             try {
                 const { data } = await axios.get(`${API_URL}/guerra`, { timeout: 20000 })
-
                 let groupMeta = null
-                try {
-                    if (jid.endsWith('@g.us')) groupMeta = await sock.groupMetadata(jid)
-                } catch(e){}
-
+                try { if (jid.endsWith('@g.us')) groupMeta = await sock.groupMetadata(jid) } catch(e){}
                 const buscarJid = (nombre) => {
-                    if (!groupMeta ||!groupMeta.participants) return null
-                    const nombreLower = nombre.toLowerCase().trim()
-                    let m = groupMeta.participants.find(p =>
-                        (p.notify && p.notify.toLowerCase() === nombreLower) ||
-                        (p.name && p.name.toLowerCase() === nombreLower)
-                    )
-                    if (m) return m.id
-                    m = groupMeta.participants.find(p => {
-                        const n1 = (p.notify || "").toLowerCase()
-                        const n2 = (p.name || "").toLowerCase()
-                        if(n1.length < 3) return false
-                        return n1.includes(nombreLower) || nombreLower.includes(n1) || n2.includes(nombreLower)
-                    })
+                    if (!groupMeta) return null
+                    const nL = nombre.toLowerCase().trim()
+                    let m = groupMeta.participants.find(p => (p.notify?.toLowerCase() === nL) || (p.name?.toLowerCase() === nL))
+                    if(m) return m.id
+                    m = groupMeta.participants.find(p => (p.notify||"").toLowerCase().includes(nL.substring(0,4)))
                     return m? m.id : null
                 }
 
                 if (lower.startsWith("!faltan")) {
                     const faltan = data.filter(p => p.ataquesRestantes > 0)
                     if (faltan.length === 0) return sock.sendMessage(jid, { text: `✅ ¡Todos atacaron! Guerra completa.` + firma })
-
                     let txt = `🚨 *FALTAN ${faltan.length} POR ATACAR* 🚨\n\n`
                     let mentions = []
                     faltan.forEach(p => {
-                        const jidM = buscarJid(p.name)
-                        if(jidM){
-                            mentions.push(jidM)
-                            txt += `⚠️ @${jidM.split('@')[0]} - ${p.name} le faltan ${p.ataquesRestantes}\n`
-                        } else {
-                            txt += `⚠️ ${p.name} le faltan ${p.ataquesRestantes}\n`
-                        }
+                        const pg = p.puntosGuerra?? p.fama?? 0
+                        const j = buscarJid(p.name)
+                        if(j){ mentions.push(j); txt += `⚠️ @${j.split('@')[0]} - ${p.name} | ${pg} PG | faltan ${p.ataquesRestantes}\n` }
+                        else txt += `⚠️ ${p.name} | ${pg} PG | faltan ${p.ataquesRestantes}\n`
                     })
-                    txt += firma
-                    return sock.sendMessage(jid, { text: txt, mentions: mentions })
+                    return sock.sendMessage(jid, { text: txt + firma, mentions })
                 }
 
-                //!guerra completo
-                let txt = `⚔️ *REPORTE DE GUERRA* ⚔️\n\n`
+                //!guerra - CAMBIADO A PG
+                let txt = `⚔️ *REPORTE DE GUERRA - PUNTOS DE GUERRA* ⚔️\n\n`
                 data.forEach(p => {
-                    txt += `*${p.name}* - ${p.ataques} / 4 - ${p.fama} fama\n`
+                    const pg = p.puntosGuerra?? p.fama?? 0
+                    txt += `*${p.name}* - ${p.ataques}/4 ataques - ${pg} PG\n`
                 })
-                txt += `\n💎 *PANCAKES VIP+ V2*`
-                txt += firma
+                txt += `\n💎 *PANCAKES VIP+ V2*` + firma
                 return sock.sendMessage(jid, { text: txt })
 
+            } catch(e){ return sock.sendMessage(jid, { text: "❌ Error obteniendo guerra" + firma }) }
+        }
+
+        if (lower.startsWith("!inactivos")) {
+            try {
+                await sock.sendMessage(jid, { text: "💤 Analizando inactivos..." + firma })
+                let clanData
+                try {
+                    const r = await axios.get(`${API_URL}/inactivos`, { timeout: 20000 })
+                    clanData = r.data
+                } catch {
+                    const r = await axios.get(`${API_URL}/clan`, { timeout: 20000 })
+                    clanData = r.data.memberList || r.data
+                }
+
+                let groupMeta = null
+                try { if (jid.endsWith('@g.us')) groupMeta = await sock.groupMetadata(jid) } catch(e){}
+                const buscarJid = (nombre) => {
+                    if (!groupMeta) return null
+                    const nL = nombre.toLowerCase().trim()
+                    let m = groupMeta.participants.find(p => (p.notify?.toLowerCase() === nL))
+                    if(m) return m.id
+                    m = groupMeta.participants.find(p => (p.notify||"").toLowerCase().includes(nL.substring(0,4)))
+                    return m? m.id : null
+                }
+
+                const inactivos = []
+                for(let m of clanData){
+                    const donaciones = m.donations || 0
+                    const ataques = m.ataques?? m.warAttacks?? m.puntosGuerra?? 4
+                    const pg = m.puntosGuerra?? m.fama?? 0
+                    const offline = m.offlineDays?? 0
+                    if(donaciones < 50 || ataques < 3 || offline >= 2){
+                        inactivos.push({ name: m.name, donaciones, ataques, pg, offline })
+                    }
+                }
+
+                if(inactivos.length === 0) return sock.sendMessage(jid, { text: "✅ No hay inactivos" + firma })
+
+                let txt = `💤 *REPORTE INACTIVOS* 💤\nFiltros: <50 donas | <3 ataques | 2+ días offline\n\n`
+                let mentions = []
+                inactivos.forEach(p => {
+                    const j = buscarJid(p.name)
+                    if(j){ mentions.push(j); txt += `💤 @${j.split('@')[0]} - ${p.name}\n └ 🃏 Donas: ${p.donaciones} | ⚔️ Ataques: ${p.ataques} | 🛡️ ${p.pg} PG | 💤 ${p.offline}d\n` }
+                    else txt += `💤 ${p.name}\n └ 🃏 Donas: ${p.donaciones} | ⚔️ Ataques: ${p.ataques} | 🛡️ ${p.pg} PG | 💤 ${p.offline}d\n`
+                })
+                txt += `\n⚠️ Total: ${inactivos.length} inactivos` + firma
+                return sock.sendMessage(jid, { text: txt, mentions })
+
             } catch(e){
-                console.log("Error guerra:", e.message)
-                return sock.sendMessage(jid, { text: "❌ Error obteniendo guerra, intenta más tarde." + firma })
+                return sock.sendMessage(jid, { text: "❌ No pude obtener inactivos" + firma })
             }
         }
     })
