@@ -1,19 +1,36 @@
 import makeWASocket, { useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys'
 import P from 'pino'
 import axios from 'axios'
+import qrcode from 'qrcode-terminal'
 
-const API_URL = "https://bot-clash-royale-backend.onrender.com"
-const CLAN_TAG = "%23GJCP9C8Y"
+console.log("=== BOT INICIANDO ===");
+
+const API_URL = process.env.BACKEND_URL || "https://bot-clash-royale-backend.onrender.com"
+const CLAN_TAG = process.env.CLAN_TAG || "%23GJCP9C8Y"
+
+console.log("API_URL:", API_URL);
+console.log("CLAN_TAG:", CLAN_TAG);
 
 async function startBot() {
+    console.log("Cargando auth...");
     const { state, saveCreds } = await useMultiFileAuthState('auth')
-    const sock = makeWASocket({ auth: state, logger: P({ level: 'silent' }), printQRInTerminal: true })
+    const sock = makeWASocket({
+        auth: state,
+        logger: P({ level: 'silent' }),
+    })
     sock.ev.on('creds.update', saveCreds)
     sock.ev.on('connection.update', (u) => {
-        const { connection, lastDisconnect } = u
+        const { connection, lastDisconnect, qr } = u
+        if(qr){
+            console.log("=== ESCANEA ESTE QR ===");
+            qrcode.generate(qr, {small: true})
+        }
+        if(connection) console.log("Estado:", connection);
         if (connection === 'close') {
-            const should = lastDisconnect.error?.output?.statusCode!== DisconnectReason.loggedOut
+            const should = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut
+            console.log("Desconectado, reconectar?", should);
             if (should) startBot()
+            else console.log("LOGOUT, borra la carpeta auth y vuelve a deployar");
         } else if (connection === 'open') console.log('💎 BOT VIP+ CONECTADO')
     })
 
@@ -36,19 +53,7 @@ async function startBot() {
         }
 
         if (lower === "!menu") {
-            let txt = `╭─━━━━━━━━━━━━━━━━━╮\n`
-            txt += `│ 💎 *PANCAKES VIP+* 💎 │\n`
-            txt += `│ 👑 *SISTEMA PREMIUM* 👑 │\n`
-            txt += `├─━━━━━━━━━━━━━━━━━┤\n`
-            txt += `│ ⚔️!guerra → Guerra completa\n`
-            txt += `│ 🚨!faltan → Solo faltan + tag\n`
-            txt += `│ 🏆!top → Top 10 PG\n`
-            txt += `│ 🏰!clan → Info VIP\n`
-            txt += `│ 👤!perfil #TAG → Perfil VIP\n`
-            txt += `│ 📦!cofres #TAG → Ciclo cofres\n`
-            txt += `│ 🃏!mazos #TAG → Mazos top\n`
-            txt += `│ 💤!inactivos → Inactivos\n`
-            txt += `╰─━━━━━━━━━━━━━━━━━╯`
+            let txt = `╭─━━━━━━━━━━━━━━━━━╮\n│ 💎 *PANCAKES VIP+* 💎 │\n│ 👑 *SISTEMA PREMIUM* 👑 │\n├─━━━━━━━━━━━━━━━━━┤\n│ ⚔️!guerra → Guerra completa\n│ 🚨!faltan → Solo faltan + tag\n│ 🏆!top → Top 10 PG\n│ 🏰!clan → Info VIP\n│ 👤!perfil #TAG → Perfil VIP\n│ 📦!cofres #TAG → Ciclo cofres\n│ 🃏!mazos #TAG → Mazos top\n│ 💤!inactivos → Inactivos\n╰─━━━━━━━━━━━━━━━━━╯`
             return sock.sendMessage(jid, { text: txt })
         }
 
@@ -59,7 +64,7 @@ async function startBot() {
                 const { data } = await axios.get(`${API_URL}/clan/${CLAN_TAG}`)
                 let txt = `╭─ 💎 *CLAN VIP+* ─╮\n│ 🏰 *${data.name}*\n│ 🏷️ ${data.tag} | 👥 ${data.members}/50\n├──────────────────┤\n│ 🏆 Trofeos: ${data.clanScore}\n│ ⚔️ Guerra: ${data.warTrophies}\n╰──────────────────╯`
                 return sock.sendMessage(jid, { text: txt })
-            } catch(e){ return sock.sendMessage(jid, { text: "❌ API dormida" }) }
+            } catch(e){ console.log(e); return sock.sendMessage(jid, { text: "❌ API dormida: " + API_URL }) }
         }
 
         if (lower === "!guerra" || lower === "!faltan" || lower === "!top") {
@@ -97,12 +102,9 @@ async function startBot() {
                     if(jidM){ mentions.push(jidM); faltanTxt += `│ 💀 @${jidM.split('@')[0]} → ${p.decksUsed}/4 | PG:${p.fame}\n` }
                     else faltanTxt += `│ 💀 ${p.name} → ${p.decksUsed}/4 | PG:${p.fame}\n`
                 })
-                let txt = `╭─ ⚔️ *GUERRA PANCAKES❤️ 2.6* ─╮\n`
-                txt += `│ 🏷️ #GJCP9C8Y | 👥 ${participantes.length} | 🔥 Puntos de Guerra: ${data.clan.fame}\n`
-                txt += `├─ 📊 *RESUMEN* ─┤\n│ ✅ Atacaron: ${atacaron.length} | ❌ Faltan: ${faltan.length}\n`
-                txt += `├─ 🚨 *FALTAN (${faltan.length})* ─┤\n` + faltanTxt + `╰──────────────────────╯`
+                let txt = `╭─ ⚔️ *GUERRA PANCAKES❤️ 2.6* ─╮\n│ 🏷️ #GJCP9C8Y | 👥 ${participantes.length} | 🔥 Puntos de Guerra: ${data.clan.fame}\n├─ 📊 *RESUMEN* ─┤\n│ ✅ Atacaron: ${atacaron.length} | ❌ Faltan: ${faltan.length}\n├─ 🚨 *FALTAN (${faltan.length})* ─┤\n` + faltanTxt + `╰──────────────────────╯`
                 return sock.sendMessage(jid, { text: txt, mentions })
-            } catch(e){ return sock.sendMessage(jid, { text: "❌ Sin guerra activa" }) }
+            } catch(e){ console.log(e); return sock.sendMessage(jid, { text: "❌ Sin guerra activa" }) }
         }
 
         if (lower.startsWith("!perfil")) {
