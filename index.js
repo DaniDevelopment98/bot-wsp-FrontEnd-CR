@@ -76,7 +76,7 @@ async function startBot() {
 
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const msg = messages[0]
-        if (!msg.message || msg.key.fromMe) return
+        if (!msg.message) return
         const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim()
         const jid = msg.key.remoteId
         const lower = text.toLowerCase()
