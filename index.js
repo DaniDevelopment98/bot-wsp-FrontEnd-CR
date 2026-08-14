@@ -111,57 +111,97 @@ async function startBot() {
 
         //!GUERRA y!FALTAN - ARREGLADO A TU JSON
        //!GUERRA - COMPLETO PRO MAX ING. DANIIEL - CON FALTANTES INCLUIDOS
-        if (lower === '!guerra' || lower.startsWith('!guerra ')) {
+      //!GUERRA + FALTAN COMBINADOS - DISEÑO FOTO - PRO ING. DANIIEL
+        if (lower === '!guerra' || lower.startsWith('!guerra ') || lower === '!faltan' || lower.startsWith('!faltan ')) {
             try {
+                const esFaltan = lower.startsWith('!faltan')
                 const { data: race } = await axios.get(`${API_URL}/guerra/${CLAN_TAG}`, { timeout: 25000 })
                 const participantes = race.clan?.participants || []
-                const clanName = race.clan?.name || 'PANCAKES VIP+'
+                const totalMiembros = participantes.length || 0
 
-                if(participantes.length === 0) return sock.sendMessage(jid, { text: `❌ No hay datos de guerra activa` + firma })
+                if(participantes.length === 0) return sock.sendMessage(jid, { text: `❌ No hay guerra activa` + firma })
 
                 participantes.sort((a,b)=> (b.fame||0)-(a.fame||0))
                 const totalPG = participantes.reduce((a,p)=> a + (p.fame||0), 0)
-                const promedioPG = Math.round(totalPG / participantes.length)
-                const totalAtks = participantes.reduce((a,p)=> a + (p.decksUsedToday||0), 0)
-                const maxAtks = participantes.length * 4
-                const faltan = participantes.filter(p=> (p.decksUsedToday||0) < 4)
+                const promPG = totalMiembros? Math.round(totalPG / totalMiembros) : 0
+                const totalAtksUsados = participantes.reduce((a,p)=> a + (p.decksUsedToday||0), 0)
+                const totalAtksMax = totalMiembros * 4
+                const porcentaje = totalAtksMax? Math.round((totalAtksUsados / totalAtksMax)*100) : 0
+                const completaron = participantes.filter(p=> (p.decksUsedToday||0) === 4)
+                const faltan = participantes.filter(p=> (p.decksUsedToday||0) < 4).sort((a,b)=> (a.decksUsedToday||0)-(b.decksUsedToday||0))
 
-                let txt = `╭─━━━━━━━━━━━━━━━━━━━━━╮\n`
-                txt += `│ ⚔️ *GUERRA PRO - ING. DANIIEL* ⚔️\n`
-                txt += `├─━━━━━━━━━━━━━━━━━━━━━┤\n`
-                txt += `│ 🏰 Clan: ${clanName}\n`
-                txt += `│ 📊 Progreso: ${totalAtks}/${maxAtks} ataques | ${totalPG} PG totales\n`
-                txt += `│ 📈 Promedio: ${promedioPG} PG por jugador\n`
-                txt += `├─ 👑 *RANKING PG* ─┤\n`
+                // Barra tipo foto
+                const bloques = 10
+                const llenos = Math.round((porcentaje/100)*bloques)
+                const barra = "█".repeat(llenos) + "░".repeat(bloques-llenos)
 
-                participantes.forEach((p,i)=>{
-                    const pg = p.fame||0
-                    const atk = p.decksUsedToday||0
-                    const falta = 4 - atk
-                    let emoji = atk===4? "🟢" : atk>=2? "🟡" : "🔴"
-                    let medalla = i===0? "🥇" : i===1? "🥈" : i===2? "🥉" : `${i+1}.`
-                    txt += `│ ${medalla} ${emoji} *${p.name}* - ${atk}/4 - ${pg} PG${falta>0?` | Faltan ${falta}`:''}\n`
-                })
+                let txt = ""
+                let mentions = []
 
-                // --- SECCIÓN NUEVA DE FALTANTES DENTRO DE GUERRA ---
-                if(faltan.length > 0){
-                    txt += `├─ 🚨 *FALTAN ${faltan.length}* ─┤\n`
-                    faltan.sort((a,b)=> (a.decksUsedToday||0)-(b.decksUsedToday||0)).forEach(p=>{
-                        txt += `│ ⚠️ ${p.name} | ${p.fame||0} PG | Faltan ${4-(p.decksUsedToday||0)}\n`
+                if(esFaltan){
+                    // ---- !FALTAN SOLO ----
+                    if(faltan.length === 0) return sock.sendMessage(jid, { text: `✅ ¡Todos atacaron! ${totalAtksUsados}/${totalAtksMax}` + firma })
+
+                    let groupMeta = null
+                    try { if (jid.endsWith('@g.us')) groupMeta = await sock.groupMetadata(jid) } catch(e){}
+                    const buscarJid = (nombre) => {
+                        if (!groupMeta) return null
+                        let m = groupMeta.participants.find(p => (p.notify?.toLowerCase() === nombre.toLowerCase() || p.id.includes(nombre.toLowerCase().replace(/\s/g,''))))
+                        return m? m.id : null
+                    }
+
+                    txt = `╭─ 🚨 *FALTAN (${faltan.length}) - PANCAKES* ─╮\n`
+                    txt += `│ 🏷️ #${CLAN_TAG} | 📊 ${totalAtksUsados}/${totalAtksMax} | ${porcentaje}%\n`
+                    txt += `├─ 🔥 *LISTA* ─┤\n`
+
+                    faltan.forEach(p=>{
+                        const atk = p.decksUsedToday||0
+                        const pg = p.fame||0
+                        const circulos = "🔴".repeat(4-atk) + "🟢".repeat(atk)
+                        const jidM = buscarJid(p.name)
+                        if(jidM){
+                            mentions.push(jidM)
+                            txt += `│ ${circulos} @${jidM.split('@')[0]} → ${atk}/4 | ${pg} PG\n`
+                        } else {
+                            txt += `│ ${circulos} ${p.name} → ${atk}/4 | ${pg} PG\n`
+                        }
                     })
-                    txt += `│\n│ 💡 Usa !faltan para etiquetarlos\n`
+                    txt += `╰─━━━━━━━━━━━━━━━━━━━━╯` + firma
+                    return sock.sendMessage(jid, { text: txt, mentions })
+
                 } else {
-                    txt += `├─ ✅ *TODOS ATACARON* ─┤\n`
-                    txt += `│ 🎉 Guerra completada al 100%\n`
+                    // ---- !GUERRA COMPLETO ----
+                    txt = `╭─ ⚔️ *REPORTE GUERRA PRO - PANCAKES* ─╮\n`
+                    txt += `│ 🏷️ #${CLAN_TAG} | 👥 ${totalMiembros} miembros\n`
+                    txt += `│ 🔥 ${totalPG} PG | 📊 Prom: ${promPG} PG\n`
+                    txt += `│ ${barra} ${porcentaje}% (${totalAtksUsados}/${totalAtksMax})\n`
+                    txt += `├─ 📊 *RESUMEN* ─┤\n`
+                    txt += `│ ✅ Completaron: ${completaron.length} | ❌ Faltan: ${faltan.length}\n`
+                    txt += `├─ 🏆 *TOP 5 MVP* ─┤\n`
+
+                    participantes.slice(0,5).forEach((p,i)=>{
+                        const medalla = i===0? "🥇 " : i===1? "🥈 " : i===2? "🥉 " : `#${i+1} `
+                        txt += `│ ${medalla}${p.name} → ${p.fame||0} PG\n`
+                    })
+
+                    if(faltan.length > 0){
+                        txt += `├─ 🚨 *FALTAN (${faltan.length})* ─┤\n`
+                        faltan.slice(0,20).forEach(p=>{
+                            const atk = p.decksUsedToday||0
+                            const circulos = "🔴".repeat(4-atk) + "🟢".repeat(atk)
+                            txt += `│ ${circulos} ${p.name} → ${atk}/4 | ${p.fame||0} PG\n`
+                        })
+                        if(faltan.length > 20) txt += `│ ...y ${faltan.length-20} más. Usa !faltan\n`
+                    } else {
+                        txt += `├─ ✅ *TODOS COMPLETARON* ─┤\n`
+                    }
+                    txt += `╰─━━━━━━━━━━━━━━━━━━━━╯` + firma
+                    return sock.sendMessage(jid, { text: txt })
                 }
 
-                txt += `╰─━━━━━━━━━━━━━━━━━━━━━╯\n`
-                txt += `💎 *PANCAKES VIP+ | ${totalAtks}/${maxAtks} ATAQUES*` + firma
-
-                return sock.sendMessage(jid, { text: txt })
             } catch(e){
-                console.log("Error guerra:", e.message)
-                return sock.sendMessage(jid, { text: `❌ Error guerra: ${e.message}` + firma })
+                console.log("Error guerra/faltan:", e.message)
+                return sock.sendMessage(jid, { text: `❌ Error: ${e.message}` + firma })
             }
         }
 
