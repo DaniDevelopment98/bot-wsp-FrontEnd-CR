@@ -2,8 +2,36 @@ import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion } from '
 import axios from 'axios'
 import P from 'pino'
 
-const API_URL = process.env.API_URL || "https://tu-api.onrender.com"
+const CLAN_TAG = (process.env.CLAN_TAG || "").replace('#','').toUpperCase()
+const TOKEN = process.env.CLASH_ROYALE_TOKEN
 const firma = `\n\n🤖 _Asistente Bot de Daniiel_`
+
+const headers = { Authorization: `Bearer ${TOKEN}` }
+
+async function getGuerraData(){
+    // 1. River Race actual
+    const url = `https://api.clashroyale.com/v1/clans/%23${CLAN_TAG}/currentriverrace`
+    const { data } = await axios.get(url, { headers, timeout: 15000 })
+
+    const clan = data.clan
+    // clan.participants = lista guerra
+    const participantes = clan.participants.map(p => ({
+        name: p.name,
+        tag: p.tag,
+        ataques: p.decksUsed || 0,
+        ataquesRestantes: 4 - (p.decksUsed || 0),
+        puntosGuerra: p.fame || 0,
+        PG: p.fame || 0,
+        reparaciones: p.repairPoints || 0
+    }))
+    return participantes.sort((a,b)=> b.puntosGuerra - a.puntosGuerra)
+}
+
+async function getClanData(){
+    const url = `https://api.clashroyale.com/v1/clans/%23${CLAN_TAG}`
+    const { data } = await axios.get(url, { headers, timeout: 15000 })
+    return data
+}
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth')
@@ -20,85 +48,14 @@ async function startBot() {
         if (!text) return
         const lower = text.toLowerCase().trim()
 
-        if (lower === '!menu' || lower === '!ayuda') {
-            let txt = `╭─━━━━━━━━━━━━━━╮\n`
-            txt += `│ 💎 *ASISTENTE DE DANIIEL* 💎\n`
-            txt += `│ 🤖 Bot oficial de Daniiel\n`
-            txt += `├─━━━━━━━━━━━━━━┤\n`
-            txt += `│ ⚔️!guerra → Reporte guerra (PG)\n`
-            txt += `│ 🚨!faltan → Faltan por atacar\n`
-            txt += `│ 👤!perfil #TAG → Perfil PRO\n`
-            txt += `│ 💤!inactivos → Inactivos + offline\n`
-            txt += `╰─━━━━━━━━━━━━━━╯`
-            txt += firma + ` | PANCAKES VIP+`
+        if (lower === '!menu') {
+            let txt = `╭─━━━━━━━━━━━━━━╮\n│ 💎 *ASISTENTE DE DANIIEL* 💎\n├─━━━━━━━━━━━━━━┤\n│ ⚔️!guerra → Reporte PG\n│ 🚨!faltan → Faltan por atacar\n│ 💤!inactivos → Inactivos\n│ 👤!perfil #TAG → Perfil\n╰─━━━━━━━━━━━━━━╯` + firma
             return sock.sendMessage(jid, { text: txt })
-        }
-
-        if (lower.startsWith("!perfil")) {
-            let tag = text.split(" ").find(t => t.includes('#')) || text.split(" ")[1] || ""
-            tag = tag.replace(/[^A-Za-z0-9#]/g, '').replace('#','').toUpperCase().trim()
-            if (!tag || tag.length < 3) return sock.sendMessage(jid, { text: "❌ Usa:!perfil #TAG" + firma })
-            try {
-                const { data } = await axios.get(`${API_URL}/perfil/${tag}`, { timeout: 15000 })
-                let txt = `╭─ 💎 *PERFIL PRO* ─╮\n│ 👤 *${data.name}* | #${tag}\n│ 🏆 ${data.trophies} | Récord: ${data.bestTrophies}\n│ 🏰 ${data.clan?.name || 'Sin clan'}\n╰─ 💎 *VIP+* ─╯` + firma
-                return sock.sendMessage(jid, { text: txt })
-            } catch(e){
-                return sock.sendMessage(jid, { text: `❌ Tag #${tag} no encontrado` + firma })
-            }
         }
 
         if (lower.startsWith("!guerra") || lower.startsWith("!faltan")) {
             try {
-                const { data } = await axios.get(`${API_URL}/guerra`, { timeout: 20000 })
-                let groupMeta = null
-                try { if (jid.endsWith('@g.us')) groupMeta = await sock.groupMetadata(jid) } catch(e){}
-                const buscarJid = (nombre) => {
-                    if (!groupMeta) return null
-                    const nL = nombre.toLowerCase().trim()
-                    let m = groupMeta.participants.find(p => (p.notify?.toLowerCase() === nL) || (p.name?.toLowerCase() === nL))
-                    if(m) return m.id
-                    m = groupMeta.participants.find(p => (p.notify||"").toLowerCase().includes(nL.substring(0,4)))
-                    return m? m.id : null
-                }
-
-                if (lower.startsWith("!faltan")) {
-                    const faltan = data.filter(p => p.ataquesRestantes > 0)
-                    if (faltan.length === 0) return sock.sendMessage(jid, { text: `✅ ¡Todos atacaron! Guerra completa.` + firma })
-                    let txt = `🚨 *FALTAN ${faltan.length} POR ATACAR* 🚨\n\n`
-                    let mentions = []
-                    faltan.forEach(p => {
-                        const pg = p.puntosGuerra?? p.fama?? 0
-                        const j = buscarJid(p.name)
-                        if(j){ mentions.push(j); txt += `⚠️ @${j.split('@')[0]} - ${p.name} | ${pg} PG | faltan ${p.ataquesRestantes}\n` }
-                        else txt += `⚠️ ${p.name} | ${pg} PG | faltan ${p.ataquesRestantes}\n`
-                    })
-                    return sock.sendMessage(jid, { text: txt + firma, mentions })
-                }
-
-                //!guerra - CAMBIADO A PG
-                let txt = `⚔️ *REPORTE DE GUERRA - PUNTOS DE GUERRA* ⚔️\n\n`
-                data.forEach(p => {
-                    const pg = p.puntosGuerra?? p.fama?? 0
-                    txt += `*${p.name}* - ${p.ataques}/4 ataques - ${pg} PG\n`
-                })
-                txt += `\n💎 *PANCAKES VIP+ V2*` + firma
-                return sock.sendMessage(jid, { text: txt })
-
-            } catch(e){ return sock.sendMessage(jid, { text: "❌ Error obteniendo guerra" + firma }) }
-        }
-
-        if (lower.startsWith("!inactivos")) {
-            try {
-                await sock.sendMessage(jid, { text: "💤 Analizando inactivos..." + firma })
-                let clanData
-                try {
-                    const r = await axios.get(`${API_URL}/inactivos`, { timeout: 20000 })
-                    clanData = r.data
-                } catch {
-                    const r = await axios.get(`${API_URL}/clan`, { timeout: 20000 })
-                    clanData = r.data.memberList || r.data
-                }
-
+                const data = await getGuerraData()
                 let groupMeta = null
                 try { if (jid.endsWith('@g.us')) groupMeta = await sock.groupMetadata(jid) } catch(e){}
                 const buscarJid = (nombre) => {
@@ -110,32 +67,73 @@ async function startBot() {
                     return m? m.id : null
                 }
 
-                const inactivos = []
-                for(let m of clanData){
-                    const donaciones = m.donations || 0
-                    const ataques = m.ataques?? m.warAttacks?? m.puntosGuerra?? 4
-                    const pg = m.puntosGuerra?? m.fama?? 0
-                    const offline = m.offlineDays?? 0
-                    if(donaciones < 50 || ataques < 3 || offline >= 2){
-                        inactivos.push({ name: m.name, donaciones, ataques, pg, offline })
-                    }
+                if (lower.startsWith("!faltan")) {
+                    const faltan = data.filter(p => p.ataquesRestantes > 0)
+                    if (faltan.length === 0) return sock.sendMessage(jid, { text: `✅ ¡Todos atacaron!` + firma })
+                    let txt = `🚨 *FALTAN ${faltan.length} POR ATACAR* 🚨\n\n`
+                    let mentions = []
+                    faltan.forEach(p => {
+                        const j = buscarJid(p.name)
+                        if(j){ mentions.push(j); txt += `⚠️ @${j.split('@')[0]} - ${p.name} | ${p.PG} PG | faltan ${p.ataquesRestantes}\n` }
+                        else txt += `⚠️ ${p.name} | ${p.PG} PG | faltan ${p.ataquesRestantes}\n`
+                    })
+                    return sock.sendMessage(jid, { text: txt + firma, mentions })
                 }
 
-                if(inactivos.length === 0) return sock.sendMessage(jid, { text: "✅ No hay inactivos" + firma })
-
-                let txt = `💤 *REPORTE INACTIVOS* 💤\nFiltros: <50 donas | <3 ataques | 2+ días offline\n\n`
-                let mentions = []
-                inactivos.forEach(p => {
-                    const j = buscarJid(p.name)
-                    if(j){ mentions.push(j); txt += `💤 @${j.split('@')[0]} - ${p.name}\n └ 🃏 Donas: ${p.donaciones} | ⚔️ Ataques: ${p.ataques} | 🛡️ ${p.pg} PG | 💤 ${p.offline}d\n` }
-                    else txt += `💤 ${p.name}\n └ 🃏 Donas: ${p.donaciones} | ⚔️ Ataques: ${p.ataques} | 🛡️ ${p.pg} PG | 💤 ${p.offline}d\n`
-                })
-                txt += `\n⚠️ Total: ${inactivos.length} inactivos` + firma
-                return sock.sendMessage(jid, { text: txt, mentions })
+                let txt = `⚔️ *REPORTE GUERRA - PUNTOS DE GUERRA* ⚔️\n\n`
+                data.forEach(p => txt += `*${p.name}* - ${p.ataques}/4 - ${p.PG} PG\n`)
+                return sock.sendMessage(jid, { text: txt + firma })
 
             } catch(e){
-                return sock.sendMessage(jid, { text: "❌ No pude obtener inactivos" + firma })
+                console.log("Error guerra:", e.response?.data || e.message)
+                return sock.sendMessage(jid, { text: `❌ Error obteniendo guerra: ${e.message}` + firma })
             }
+        }
+
+        if (lower.startsWith("!inactivos")) {
+            try {
+                const guerra = await getGuerraData()
+                const clan = await getClanData()
+
+                let groupMeta = null
+                try { if (jid.endsWith('@g.us')) groupMeta = await sock.groupMetadata(jid) } catch(e){}
+                const buscarJid = (nombre) => {
+                    if (!groupMeta) return null
+                    const nL = nombre.toLowerCase().trim()
+                    let m = groupMeta.participants.find(p => (p.notify?.toLowerCase() === nL))
+                    return m? m.id : null
+                }
+
+                let txt = `💤 *REPORTE INACTIVOS* 💤\nFiltros: <100 donas | <3 ataques | 0 PG\n\n`
+                let mentions = []
+                let count = 0
+                clan.memberList.forEach(m => {
+                    const enGuerra = guerra.find(g => g.tag === m.tag) || { ataques: 0, PG: 0, ataquesRestantes: 4 }
+                    if (m.donations < 100 || enGuerra.ataques < 3 || enGuerra.PG === 0) {
+                        count++
+                        const j = buscarJid(m.name)
+                        if(j) mentions.push(j)
+                        const mentionTxt = j? `@${j.split('@')[0]}` : m.name
+                        txt += `💤 ${mentionTxt} - ${m.name}\n └ 🃏 Donas: ${m.donations} | ⚔️ ${enGuerra.ataques}/4 | 🛡️ ${enGuerra.PG} PG\n`
+                    }
+                })
+                txt += `\n⚠️ Total: ${count} inactivos` + firma
+                return sock.sendMessage(jid, { text: txt, mentions })
+            } catch(e){
+                console.log("Error inactivos:", e.message)
+                return sock.sendMessage(jid, { text: "❌ Error inactivos" + firma })
+            }
+        }
+
+        if (lower.startsWith("!perfil")) {
+            let tag = text.split(" ").find(t => t.includes('#')) || text.split(" ")[1] || ""
+            tag = tag.replace(/[^A-Za-z0-9#]/g, '').replace('#','').toUpperCase().trim()
+            if (!tag) return sock.sendMessage(jid, { text: "❌ Usa:!perfil #TAG" + firma })
+            try {
+                const { data } = await axios.get(`https://api.clashroyale.com/v1/players/%23${tag}`, { headers })
+                let txt = `💎 *${data.name}* #${tag}\n🏆 ${data.trophies} | Nv ${data.expLevel}\n🏰 ${data.clan?.name || 'Sin clan'}\n⚔️ WarWins: ${data.warDayWins}` + firma
+                return sock.sendMessage(jid, { text: txt })
+            } catch(e){ return sock.sendMessage(jid, { text: "❌ Tag no encontrado" + firma }) }
         }
     })
 }
