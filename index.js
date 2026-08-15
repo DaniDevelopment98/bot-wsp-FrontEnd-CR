@@ -2,6 +2,8 @@ import express from 'express'
 import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion } from '@whiskeysockets/baileys'
 import axios from 'axios'
 import qrcode from 'qrcode-terminal'
+import QRCode from 'qrcode'
+let lastQR = null
 import P from 'pino'
 
 const API_URL = (process.env.API_URL || "https://bot-clash-royale-backend.onrender.com").replace(/\/$/, "")
@@ -15,10 +17,13 @@ const PORT = process.env.PORT || 3000
 app.get('/', (req,res) => {
   res.status(200).send(`✅ BOT PANCAKES VIP+ ONLINE - ${new Date().toLocaleString()}`)
 })
-app.get('/ping', (req,res) => {
-  res.status(200).send('pong')
+app.get('/qr', async (req,res) => {
+  if(!lastQR) return res.send('<h2>❌ No hay QR, reinicia el bot en Railway -> Restart</h2>')
+  try{
+    const qrImage = await QRCode.toDataURL(lastQR)
+    res.send(`<html><body style="text-align:center;font-family:sans-serif"><h1>Escanea este QR - PANCAKES VIP+ - ING. DANIIEL</h1><img src="${qrImage}" style="width:400px;height:400px"/><p>Se actualiza solo cada 20 seg</p><script>setTimeout(()=>location.reload(),15000)</script></body></html>`)
+  }catch(e){ res.send('Error QR') }
 })
-
 app.listen(PORT, () => console.log(`🌐 Servidor web activo en puerto ${PORT}`))
 // --- FIN SERVIDOR WEB ---
 
