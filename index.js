@@ -1,10 +1,11 @@
 import express from 'express'
 import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion } from '@whiskeysockets/baileys'
 import axios from 'axios'
+import P from 'pino'
 import qrcode from 'qrcode-terminal'
 import QRCode from 'qrcode'
 let lastQR = null
-import P from 'pino'
+
 
 const API_URL = (process.env.API_URL || "https://bot-clash-royale-backend.onrender.com").replace(/\/$/, "")
 const CLAN_TAG = (process.env.CLAN_TAG || "GJCP9C8Y").replace('#','').toUpperCase()
