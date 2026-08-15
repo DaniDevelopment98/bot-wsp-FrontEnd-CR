@@ -1,6 +1,7 @@
 import express from 'express'
 import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion } from '@whiskeysockets/baileys'
 import axios from 'axios'
+import qrcode from 'qrcode-terminal'
 import P from 'pino'
 
 const API_URL = (process.env.API_URL || "https://bot-clash-royale-backend.onrender.com").replace(/\/$/, "")
@@ -26,7 +27,14 @@ async function startBot() {
     const { version } = await fetchLatestBaileysVersion()
     const sock = makeWASocket({ version, auth: state, logger: P({ level: 'silent' }) })
     sock.ev.on('creds.update', saveCreds)
-    sock.ev.on('connection.update', (u) => { if(u.qr) console.log(u.qr) })
+  
+ sock.ev.on('connection.update', (u) => { 
+  if(u.qr){
+    console.log('=== ESCANEA ESTE QR ING ===')
+    qrcode.generate(u.qr, {small: true})
+  }
+  if(u.connection === 'open') console.log('✅ CONECTADO')
+})
 
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const msg = messages[0]
