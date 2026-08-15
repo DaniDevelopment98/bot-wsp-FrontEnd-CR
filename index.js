@@ -13,13 +13,21 @@ const firma = '\n\n _Asistente Bot de Daniiel_'
 
 // LISTA BLANCA VIP+ - SOLO ESTOS 3 PUEDEN USAR EL BOT
 const NUMEROS_PERMITIDOS = [
-    "5219191629720@s.whatsapp.net", // ING DANIIEL - DUEÑO
-    "527351883276@s.whatsapp.net", // ANGEL
-    "524426806789@s.whatsapp.net", // FREDD
-    "5219191629720", // respaldo sin @
-    "527351883276",
-    "524426806789"
+    "5219191629720", // ING DANIIEL - DUEÑO
+    "527351883276", // ANGEL
+    "524426806789", // FREDD
 ]
+
+// LIDS DETECTADOS - IDs ocultos de WhatsApp
+const LIDS_PERMITIDOS = [
+    "20658859851805", 
+    "142786842099767",
+    "106610450018542",
+    // ING DANIIEL - tu LID de la captura
+    // Agrega aquí los LIDs de Angel y Fredd cuando salgan en los logs
+    // Ejemplo: "20384756xxxx",
+]
+
 // --- SERVIDOR WEB ---
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -36,7 +44,6 @@ app.get('/qr', async (req,res) => {
   }catch(e){ res.send('Error QR') }
 })
 
-// NUEVA RUTA PARA CODIGO
 app.get('/code', async (req,res) => {
   const number = req.query.number
   if(!number) return res.send('<h2>Uso: /code?number=521656XXXXXXX<br>Ejemplo: /code?number=5216561234567 (52 + 1 + tu número de 10 dígitos, sin + ni espacios)</h2>')
@@ -51,7 +58,6 @@ app.get('/code', async (req,res) => {
 })
 
 app.listen(PORT, () => console.log(`🌐 Servidor web activo en puerto ${PORT}`))
-// --- FIN SERVIDOR WEB ---
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth')
@@ -94,28 +100,37 @@ async function startBot() {
         const lower = text.toLowerCase().trim()
 
         const senderId = msg.key.participant || jid
-        const senderNumber = senderId.split('@')[0].replace('+','')
+        const rawNumber = senderId.split('@')[0].replace('+','')
+        const senderNumber = rawNumber.split(':')[0]
+        const isLid = senderId.includes('@lid') || senderNumber.length > 15 || senderNumber.startsWith('20')
 
-        // --- CANDADO VIP PRIVADO ---
-               const cleanSender = senderNumber.replace(/\D/g,'').slice(-10)
-        const isPermitido = NUMEROS_PERMITIDOS.some(n => {
-            const cleanN = n.replace(/\D/g,'').slice(-10)
-            return cleanSender.includes(cleanN) || cleanN.includes(cleanSender)
+        // --- CANDADO VIP PRIVADO CORREGIDO ---
+        const clean = (n) => n.replace(/\D/g,'').slice(-10)
+        const cleanSender = clean(senderNumber)
+
+        const esNumeroPermitido = NUMEROS_PERMITIDOS.some(n => {
+            const cleanN = clean(n)
+            return cleanSender.includes(cleanN) || cleanN.includes(cleanSender) || senderNumber.includes(n) || n.includes(senderNumber)
         })
-          if (!lower.startsWith("!")) {
-            // si no es comando, si es permitido dejalo pasar, si no, ignora
+
+        const esLidPermitido = LIDS_PERMITIDOS.includes(senderNumber)
+        const isPermitido = esNumeroPermitido || esLidPermitido
+
+        if (isLid) {
+            console.log(`🔍 LID DETECTADO: ${senderNumber} nombre: ${msg.pushName} permitido: ${isPermitido}`)
+        }
+
+        if (!lower.startsWith("!")) {
             if (!isPermitido) return
         } else {
-            // es comando, debe estar permitido
             if (!isPermitido) {
-                console.log(`❌ BLOQUEADO VIP: ${senderNumber} intentó: ${lower}`)
+                console.log(`❌ BLOQUEADO VIP: ${senderNumber} (${msg.pushName}) intentó: ${lower}`)
                 return
             }
-            // Si es grupo, además debe ser admin
             if (jid.endsWith('@g.us')) {
                 try {
                     const groupMeta = await sock.groupMetadata(jid)
-                    const participant = groupMeta.participants.find(p => p.id === senderId)
+                    const participant = groupMeta.participants.find(p => p.id === senderId || (p.id && p.id.includes(senderNumber)))
                     const isAdmin = participant?.admin === 'admin' || participant?.admin === 'superadmin'
                     if (!isAdmin) {
                         return sock.sendMessage(jid, { text: `❌ Solo admins VIP pueden usarme. Pide a Daniiel que te de acceso.` + firma })
@@ -127,7 +142,7 @@ async function startBot() {
         }
 
         if (lower === '!menu' || lower === '!ayuda') {
-            let txt = `╭─━━━━━━━━━━━━━━━━╮\n│ 💎 *SISTEMA PRO - ING. DANIIEL* 💎\n│ 🤖 Asistente Bot de Daniiel\n├─━━━━━━━━━━━━━━━━┤\n│ ⚔️!guerra → Reporte PG\n│ 🚨!faltan → Faltan por atacar\n│ 💤!inactivos → Inactivos PRO\n│ 🏰!clan → Info clan PRO MAX\n│ 👤!perfil #TAG → Perfil PRO\n╰─━━━━━━━━━━━━━━━━╯` + firma + ` | PANCAKES VIP+ | v5.0 PRO`
+            let txt = `╭─━━━━━━━━━━━━━━━━╮\n│ 💎 *SISTEMA PRO - ING. DAN* 💎\n│ 🤖 Asistente Bot de Daniiel\n├─━━━━━━━━━━━━━━━━┤\n│ ⚔️!guerra → Reporte PG\n│ 🚨!faltan → Faltan por atacar\n│ 💤!inactivos → Inactivos PRO\n│ 🏰!clan → Info clan PRO MAX\n│ 👤!perfil #TAG → Perfil PRO\n╰─━━━━━━━━━━━━━━━━╯` + firma + ` | PANCAKES VIP+ | v5.0 PRO`
             return sock.sendMessage(jid, { text: txt })
         }
 
