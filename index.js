@@ -36,6 +36,7 @@ async function startBot() {
   
  sock.ev.on('connection.update', (u) => { 
   if(u.qr){
+        lastQR = u.qr
     console.log('=== ESCANEA ESTE QR ING ===')
     qrcode.generate(u.qr, {small: true})
   }
