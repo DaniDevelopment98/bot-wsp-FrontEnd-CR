@@ -11,6 +11,15 @@ const API_URL = (process.env.API_URL || "https://bot-clash-royale-backend.onrend
 const CLAN_TAG = (process.env.CLAN_TAG || "GJCP9C8Y").replace('#','').toUpperCase()
 const firma = '\n\n _Asistente Bot de Daniiel_'
 
+// LISTA BLANCA VIP+ - SOLO ESTOS 3 PUEDEN USAR EL BOT
+const NUMEROS_PERMITIDOS = [
+    "5219191629720@s.whatsapp.net", // ING DANIIEL - DUEÑO
+    "527351883276@s.whatsapp.net", // ANGEL
+    "524426806789@s.whatsapp.net", // FREDD
+    "5219191629720", // respaldo sin @
+    "527351883276",
+    "524426806789"
+]
 // --- SERVIDOR WEB ---
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -76,13 +85,46 @@ async function startBot() {
         }
     })
 
-    sock.ev.on('messages.upsert', async ({ messages }) => {
+   sock.ev.on('messages.upsert', async ({ messages }) => {
         const msg = messages[0]
         if (!msg.message) return
         const jid = msg.key.remoteJid
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || ""
         if (!text) return
         const lower = text.toLowerCase().trim()
+
+        const senderId = msg.key.participant || jid
+        const senderNumber = senderId.split('@')[0].replace('+','')
+
+        // --- CANDADO VIP PRIVADO ---
+               const cleanSender = senderNumber.replace(/\D/g,'').slice(-10)
+        const isPermitido = NUMEROS_PERMITIDOS.some(n => {
+            const cleanN = n.replace(/\D/g,'').slice(-10)
+            return cleanSender.includes(cleanN) || cleanN.includes(cleanSender)
+        })
+          if (!lower.startsWith("!")) {
+            // si no es comando, si es permitido dejalo pasar, si no, ignora
+            if (!isPermitido) return
+        } else {
+            // es comando, debe estar permitido
+            if (!isPermitido) {
+                console.log(`❌ BLOQUEADO VIP: ${senderNumber} intentó: ${lower}`)
+                return
+            }
+            // Si es grupo, además debe ser admin
+            if (jid.endsWith('@g.us')) {
+                try {
+                    const groupMeta = await sock.groupMetadata(jid)
+                    const participant = groupMeta.participants.find(p => p.id === senderId)
+                    const isAdmin = participant?.admin === 'admin' || participant?.admin === 'superadmin'
+                    if (!isAdmin) {
+                        return sock.sendMessage(jid, { text: `❌ Solo admins VIP pueden usarme. Pide a Daniiel que te de acceso.` + firma })
+                    }
+                } catch(e) {
+                    console.log('Error admin check:', e.message)
+                }
+            }
+        }
 
         if (lower === '!menu' || lower === '!ayuda') {
             let txt = `╭─━━━━━━━━━━━━━━━━╮\n│ 💎 *SISTEMA PRO - ING. DANIIEL* 💎\n│ 🤖 Asistente Bot de Daniiel\n├─━━━━━━━━━━━━━━━━┤\n│ ⚔️!guerra → Reporte PG\n│ 🚨!faltan → Faltan por atacar\n│ 💤!inactivos → Inactivos PRO\n│ 🏰!clan → Info clan PRO MAX\n│ 👤!perfil #TAG → Perfil PRO\n╰─━━━━━━━━━━━━━━━━╯` + firma + ` | PANCAKES VIP+ | v5.0 PRO`
