@@ -11,32 +11,47 @@ const API_URL = (process.env.API_URL || "https://bot-clash-royale-backend.onrend
 const CLAN_TAG = (process.env.CLAN_TAG || "GJCP9C8Y").replace('#','').toUpperCase()
 const firma = '\n\n _Asistente Bot de Daniiel_'
 
+// --- MODO AHORRO RAILWAY $5 - DORMIDO 10PM A 8AM MEXICO ---
+const esHoraDeDormir = () => {
+    const horaMX = new Date().toLocaleString('en-US', {
+        timeZone: 'America/Mexico_City',
+        hour: 'numeric',
+        hour12: false
+    })
+    const h = parseInt(horaMX)
+    return h >= 22 || h < 8
+}
+
+const getHoraMX = () => {
+    return new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City', hour12: true })
+}
+
 // LISTA BLANCA VIP+ - SOLO ESTOS 3 PUEDEN USAR EL BOT
 const NUMEROS_PERMITIDOS = [
-    "5219191629720", // ING DANIIEL - DUEÑO
-    "527351883276", // ANGEL
-    "524426806789", // FREDD
+    "5219191629720",
+    "527351883276",
+    "524426806789",
 ]
 
-// LIDS DETECTADOS - IDs ocultos de WhatsApp
 const LIDS_PERMITIDOS = [
-    "20658859851805", 
+    "20658859851805",
     "142786842099767",
     "106610450018542",
-    // ING DANIIEL - tu LID de la captura
-    // Agrega aquí los LIDs de Angel y Fredd cuando salgan en los logs
-    // Ejemplo: "20384756xxxx",
 ]
-
+//revisar cambio
 // --- SERVIDOR WEB ---
 const app = express()
 const PORT = process.env.PORT || 3000
 
 app.get('/', (req,res) => {
-  res.status(200).send(`✅ BOT PANCAKES VIP+ ONLINE - ${new Date().toLocaleString()}`)
+  if(esHoraDeDormir()){
+    return res.status(200).send(`💤 BOT DORMIDO  - ${getHoraMX()} - Despierta a las 8am MX`)
+  }
+  res.status(200).send(`✅ BOT PANCAKES VIP+ ONLINE - ${getHoraMX()}`)
 })
 
 app.get('/qr', async (req,res) => {
+  if(esHoraDeDormir()) return res.send(`<h2>💤 Bot dormido hasta las 8am MX (${getHoraMX()}) - Ahorrando horas Railway</h2>`)
   if(!lastQR) return res.send('<h2>❌ No hay QR (ya está conectado o reinicia en Railway -> Restart).<br>Prueba /code</h2>')
   try{
     const qrImage = await QRCode.toDataURL(lastQR)
@@ -45,8 +60,9 @@ app.get('/qr', async (req,res) => {
 })
 
 app.get('/code', async (req,res) => {
+  if(esHoraDeDormir()) return res.send(`<h2>💤 Bot dormido hasta las 8am MX - Ahorrando horas</h2>`)
   const number = req.query.number
-  if(!number) return res.send('<h2>Uso: /code?number=521656XXXXXXX<br>Ejemplo: /code?number=5216561234567 (52 + 1 + tu número de 10 dígitos, sin + ni espacios)</h2>')
+  if(!number) return res.send('<h2>Uso: /code?number=521656XXXXXXX<br>Ejemplo: /code?number=5216561234567</h2>')
   if(!sockGlobal) return res.send('Bot iniciando... espera 5 seg y recarga')
   try{
     const code = await sockGlobal.requestPairingCode(number)
@@ -57,9 +73,15 @@ app.get('/code', async (req,res) => {
   }
 })
 
-app.listen(PORT, () => console.log(`🌐 Servidor web activo en puerto ${PORT}`))
+app.listen(PORT, () => console.log(`🌐 Servidor web activo en puerto ${PORT} - ${getHoraMX()}`))
 
 async function startBot() {
+    if(esHoraDeDormir()){
+        console.log(`💤 MODO AHORRO ACTIVO ${getHoraMX()} - Bot dormido, no conecta hasta las 8am MX`)
+        setTimeout(startBot, 1000 * 60 * 15) // Revisa cada 15 min si ya es hora de despertar
+        return
+    }
+
     const { state, saveCreds } = await useMultiFileAuthState('auth')
     const { version } = await fetchLatestBaileysVersion()
     const sock = makeWASocket({
@@ -80,9 +102,14 @@ async function startBot() {
         }
         if(u.connection === 'open'){
             lastQR = null
-            console.log('✅ CONECTADO ING! BOT LISTO')
+            console.log(`✅ CONECTADO ING! BOT LISTO - ${getHoraMX()}`)
         }
         if(u.connection === 'close'){
+            if(esHoraDeDormir()){
+                console.log('💤 Cerrado por modo ahorro, no reconecta hasta las 8am')
+                setTimeout(startBot, 1000 * 60 * 15)
+                return
+            }
             const shouldReconnect = u.lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut
             console.log('Conexión cerrada:', u.lastDisconnect?.error?.message, 'Reconectar:', shouldReconnect)
             if(shouldReconnect){
@@ -99,12 +126,17 @@ async function startBot() {
         if (!text) return
         const lower = text.toLowerCase().trim()
 
+        // --- CANDADO AHORRO ---
+        if(esHoraDeDormir()){
+            console.log(`💤 MODO DORMIDO ${getHoraMX()} - Ignorando mensaje`)
+            return
+        }
+
         const senderId = msg.key.participant || jid
         const rawNumber = senderId.split('@')[0].replace('+','')
         const senderNumber = rawNumber.split(':')[0]
         const isLid = senderId.includes('@lid') || senderNumber.length > 15 || senderNumber.startsWith('20')
 
-        // --- CANDADO VIP PRIVADO CORREGIDO ---
         const clean = (n) => n.replace(/\D/g,'').slice(-10)
         const cleanSender = clean(senderNumber)
 
@@ -133,7 +165,7 @@ async function startBot() {
                     const participant = groupMeta.participants.find(p => p.id === senderId || (p.id && p.id.includes(senderNumber)))
                     const isAdmin = participant?.admin === 'admin' || participant?.admin === 'superadmin'
                     if (!isAdmin) {
-                        return sock.sendMessage(jid, { text: `❌ Solo admins VIP pueden usarme. Pide a Daniiel que te de acceso.` + firma })
+                        return sock.sendMessage(jid, { text: `❌ Solo admins pueden usarme. Pide a Daniiel que te de acceso.` + firma })
                     }
                 } catch(e) {
                     console.log('Error admin check:', e.message)
@@ -142,7 +174,7 @@ async function startBot() {
         }
 
         if (lower === '!menu' || lower === '!ayuda') {
-            let txt = `╭─━━━━━━━━━━━━━━━━╮\n│ 💎 *SISTEMA PRO - ING. DAN* 💎\n│ 🤖 Asistente Bot de Daniiel\n├─━━━━━━━━━━━━━━━━┤\n│ ⚔️!guerra → Reporte PG\n│ 🚨!faltan → Faltan por atacar\n│ 💤!inactivos → Inactivos PRO\n│ 🏰!clan → Info clan PRO MAX\n│ 👤!perfil #TAG → Perfil PRO\n╰─━━━━━━━━━━━━━━━━╯` + firma + ` | PANCAKES VIP+ | v5.0 PRO`
+            let txt = `╭─━━━━━━━━━━━━━━━━╮\n│ 💎 *SISTEMA DEL ING. DAN* 💎\n│ 🤖 Asistente Bot de Daniiel\n├─━━━━━━━━━━━━━━━━┤\n│ ⚔️!guerra → Reporte PG\n│ 🚨!faltan → Faltan por atacar\n│ 💤!inactivos → Inactivos PRO\n│ 🏰!clan → Info clan PRO MAX\n│ 👤!perfil #TAG → Perfil PRO\n╰─━━━━━━━━━━━━━━━━╯` + firma + ` | PANCAKES VIP+ | v5.0 PRO | ${getHoraMX()}`
             return sock.sendMessage(jid, { text: txt })
         }
 
@@ -159,7 +191,7 @@ async function startBot() {
                 const guerraWins = data.warDayWins || 0
                 const challengeWins = data.challengeMaxWins || 0
                 let txt = `╭─━━━━━━━━━━━━━━━━━━━━━╮\n`
-                txt += `│ 💎 *PERFIL PRO - ING. DANIIEL* 💎\n`
+                txt += `│ 💎 *PERFIL- Del Jugador ${data.name}* 💎\n`
                 txt += `├─━━━━━━━━━━━━━━━━━━━━━┤\n`
                 txt += `│ 👤 *${data.name}* | #${tag}\n`
                 txt += `│ 🏰 ${clanInfo}\n`
